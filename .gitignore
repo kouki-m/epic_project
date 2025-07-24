@@ -1,3 +1,5 @@
 .env
 a.out
 *.csv
+./thirdparty/*
+epic

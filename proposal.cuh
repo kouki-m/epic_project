@@ -179,23 +179,23 @@ void proposal_init(std::vector<Transaction> &h_txs,
     size_t temp_storage_bytes = 0;
     cub::DeviceScan::ExclusiveSumByKey(d_temp_storage, temp_storage_bytes,
                                        key_for_wb, value_for_wb, write_before,
-                                       all_ops_count, cub::Equality());
+                                       all_ops_count);
     CHECK_CUDA(cudaMalloc(&d_temp_storage, temp_storage_bytes));
 
     cub::DeviceScan::ExclusiveSumByKey(d_temp_storage, temp_storage_bytes,
                                        key_for_wb, value_for_wb, write_before,
-                                       all_ops_count, cub::Equality());
+                                       all_ops_count);
 
     d_temp_storage = nullptr;
     temp_storage_bytes = 0;
     cub::DeviceScan::ExclusiveSumByKey(
         d_temp_storage, temp_storage_bytes, key_for_wa, value_for_wa,
-        write_after_rev, all_ops_count, cub::Equality());
+        write_after_rev, all_ops_count);
     CHECK_CUDA(cudaMalloc(&d_temp_storage, temp_storage_bytes));
 
     cub::DeviceScan::ExclusiveSumByKey(
         d_temp_storage, temp_storage_bytes, key_for_wa, value_for_wa,
-        write_after_rev, all_ops_count, cub::Equality());
+        write_after_rev, all_ops_count);
 
     reverse_array<<<(all_ops_count + 1023) / 1024, 1024>>>(
         write_after_rev, write_after, all_ops_count);

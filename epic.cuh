@@ -171,14 +171,12 @@ __global__ void scatter(OperationForAllOps *sorted_op, RWLoc *result,
 /* Epicの初期化フェーズ */
 void epic_init(std::vector<Transaction> &h_txs, std::vector<Operation> &h_ops,
                int transaction_count, int operation_count,
-               long long all_ops_count) {
+               long long all_ops_count, RWLoc *result, Transaction *d_txs,
+               Operation *d_ops) {
     std::vector<
         std::pair<std::string, std::chrono::high_resolution_clock::time_point>>
         times = {{"Start", std::chrono::high_resolution_clock::now()}};
     // GPU用のメモリを確保する
-    Transaction *d_txs;
-    Operation *d_ops;
-
     CHECK_CUDA(cudaMalloc(&d_txs, sizeof(Transaction) * h_txs.size()));
     CHECK_CUDA(cudaMalloc(&d_ops, sizeof(Operation) * h_ops.size()));
 
@@ -254,23 +252,23 @@ void epic_init(std::vector<Transaction> &h_txs, std::vector<Operation> &h_ops,
     temp_storage_bytes = 0;
     cub::DeviceScan::ExclusiveSumByKey(d_temp_storage, temp_storage_bytes,
                                        key_for_wb, value_for_wb, write_before,
-                                       all_ops_count, cub::Equality());
+                                       all_ops_count);
     CHECK_CUDA(cudaMalloc(&d_temp_storage, temp_storage_bytes));
 
     cub::DeviceScan::ExclusiveSumByKey(d_temp_storage, temp_storage_bytes,
                                        key_for_wb, value_for_wb, write_before,
-                                       all_ops_count, cub::Equality());
+                                       all_ops_count);
 
     d_temp_storage = nullptr;
     temp_storage_bytes = 0;
     cub::DeviceScan::ExclusiveSumByKey(
         d_temp_storage, temp_storage_bytes, key_for_wa, value_for_wa,
-        write_after_rev, all_ops_count, cub::Equality());
+        write_after_rev, all_ops_count);
     CHECK_CUDA(cudaMalloc(&d_temp_storage, temp_storage_bytes));
 
     cub::DeviceScan::ExclusiveSumByKey(
         d_temp_storage, temp_storage_bytes, key_for_wa, value_for_wa,
-        write_after_rev, all_ops_count, cub::Equality());
+        write_after_rev, all_ops_count);
 
     reverse_array<<<(all_ops_count + 1023) / 1024, 1024>>>(
         write_after_rev, write_after, all_ops_count);
@@ -315,7 +313,6 @@ void epic_init(std::vector<Transaction> &h_txs, std::vector<Operation> &h_ops,
     times.push_back(
         {"rw_loc creation\t", std::chrono::high_resolution_clock::now()});
     // 振り分ける
-    RWLoc *result;
     CHECK_CUDA(cudaMalloc(&result, sizeof(RWLoc) * all_ops_count));
     scatter<<<(all_ops_count + 1023) / 1024, 1024>>>(
         sorted_op, result, rw_loc, op_id_to_idx, all_ops_count);
@@ -332,8 +329,8 @@ void epic_init(std::vector<Transaction> &h_txs, std::vector<Operation> &h_ops,
     first_run = false;
 
     // メモリ開放
-    cudaFree(d_txs);
-    cudaFree(d_ops);
+    // cudaFree(d_txs);
+    // cudaFree(d_ops);
     cudaFree(all_ops);
     cudaFree(op_id_to_idx);
     cudaFree(sorted_op);
@@ -353,6 +350,47 @@ void epic_init(std::vector<Transaction> &h_txs, std::vector<Operation> &h_ops,
     cudaFree(rw_loc);
     cudaFree(result);
     cudaDeviceSynchronize();
+}
+#endif
+
+/* 実行フェーズ関連 */
+__global__ void execution_kernel(Transaction *txs, Operation *ops,
+                                 RWLoc *rw_loc, int tx_count) {
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if (idx >= tx_count) {
+        return;
+    }
+    int op_idx = txs[idx].op_start_index;
+    int op_count = txs[idx].op_count;
+    for (int i = 0; i < op_count; ++i) {
+        int op_type = ops[op_idx + i].type;
+        int version = rw_loc[op_idx].version;
+        int index = rw_loc[op_idx + i].index;
+        if (op_type == 0) { // Read
+            // 読み取り操作の処理
+            int record_id = ops[op_idx + i].record_id;
+            RWLoc loc = rw_loc[op_idx + i];
+            // ここで読み取り操作を実行する
+            // 例: printf("Read record %d at version %d\n", record_id,
+            // loc.version);
+        } else if (op_type == 1) { // Write
+            // 書き込み操作の処理
+            int record_id = ops[op_idx + i].record_id;
+            RWLoc loc = rw_loc[op_idx + i];
+            // ここで書き込み操作を実行する
+            // 例: printf("Write record %d at version %d\n", record_id,
+            // loc.version);
+        }
+    }
+}
+
+#ifndef EPIC_EXECUTION
+#define EPIC_EXECUTION
+void epic_execution(Transaction *txs, Operation *ops, RWLoc *rw_loc,
+                    int transaction_count, int operation_count,
+                    long long all_ops_count) {
+    execution_kernel<<<(transaction_count + 1023) / 1024, 1024>>>(
+        txs, ops, rw_loc, transaction_count);
 }
 #endif
 

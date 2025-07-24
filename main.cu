@@ -7,13 +7,24 @@ void epic(long long transaction_count, int operation_count,
     long long all_ops_count;
     std::vector<Transaction> h_txs;
     std::vector<Operation> h_ops;
+    // トランザクションセットの作成
     all_ops_count = create_transactions(h_txs, h_ops, transaction_count,
                                         operation_count, record_count, seed);
+    // DBの初期化
+
+    // ROOP_COUNT回実行して平均を取ることで上振れ下振れを軽減
     for (int i = 0; i < ROOP_COUNT; i++) {
         std::chrono::high_resolution_clock::time_point start =
             std::chrono::high_resolution_clock::now();
+        // 初期化フェーズ
+        RWLoc *result;
+        Transaction *d_txs;
+        Operation *d_ops;
         epic_init(h_txs, h_ops, transaction_count, operation_count,
-                  all_ops_count);
+                  all_ops_count, result, d_txs, d_ops);
+        // 実行フェーズ
+        epic_execution(d_txs, d_ops, result, transaction_count, operation_count,
+                       all_ops_count);
         std::chrono::high_resolution_clock::time_point end =
             std::chrono::high_resolution_clock::now();
     }
